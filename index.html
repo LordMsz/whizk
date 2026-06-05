@@ -90,6 +90,7 @@
             <div><strong>Ctrl</strong> + drag: Arrow</div>
             <div><strong>Space</strong> + drag (or Middle Mouse): Pan</div>
             <div>Click: Add text</div>
+            <div><strong>Esc</strong> + click: Delete object</div>
             <div><strong>Delete</strong>: Clear all</div>
         </div>
         <button class="toolbar-button" id="clearBtn">Clear Canvas</button>
@@ -122,6 +123,7 @@
             // Very small "camera" for panning (screen = world + pan)
             let pan = { x: 0, y: 0 };
             let spaceDown = false;
+            let escDown = false;
             let isPanning = false;
             let panLast = { x: 0, y: 0 };
 
@@ -197,6 +199,52 @@
                 ctx.fillText(text, x, y);
             }
 
+            function pointToSegmentDistance(px, py, x1, y1, x2, y2) {
+                const dx = x2 - x1;
+                const dy = y2 - y1;
+                const lenSq = dx * dx + dy * dy;
+                if (lenSq === 0) return Math.hypot(px - x1, py - y1);
+                const t = Math.max(0, Math.min(1, ((px - x1) * dx + (py - y1) * dy) / lenSq));
+                const cx = x1 + t * dx;
+                const cy = y1 + t * dy;
+                return Math.hypot(px - cx, py - cy);
+            }
+
+            function isPointOnShape(p, s, tolerance = 8) {
+                if (s.type === 'rect') {
+                    const minX = Math.min(s.x1, s.x2) - tolerance;
+                    const maxX = Math.max(s.x1, s.x2) + tolerance;
+                    const minY = Math.min(s.y1, s.y2) - tolerance;
+                    const maxY = Math.max(s.y1, s.y2) + tolerance;
+                    return p.x >= minX && p.x <= maxX && p.y >= minY && p.y <= maxY;
+                }
+
+                if (s.type === 'arrow') {
+                    return pointToSegmentDistance(p.x, p.y, s.x1, s.y1, s.x2, s.y2) <= tolerance;
+                }
+
+                if (s.type === 'text') {
+                    ctx.font = `${CONFIG.fontSize}px -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif`;
+                    const width = ctx.measureText(s.text).width;
+                    return p.x >= s.x - tolerance &&
+                        p.x <= s.x + width + tolerance &&
+                        p.y >= s.y - CONFIG.fontSize - tolerance &&
+                        p.y <= s.y + tolerance;
+                }
+
+                return false;
+            }
+
+            function deleteShapeAt(p) {
+                for (let i = shapes.length - 1; i >= 0; i--) {
+                    if (isPointOnShape(p, shapes[i])) {
+                        shapes.splice(i, 1);
+                        return true;
+                    }
+                }
+                return false;
+            }
+
             function draw() {
                 ctx.fillStyle = CONFIG.bg;
                 ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -232,13 +280,17 @@
                 }
             }
 
-            canvas.addEventListener('contextmenu', (e) => e.preventDefault());
-
             document.addEventListener('keydown', (e) => {
                 if (e.code === 'Space') {
                     e.preventDefault();
                     spaceDown = true;
                     if (!isPanning && !isDrawing) canvas.style.cursor = 'grab';
+                }
+                if (e.code === 'Escape') {
+                    escDown = true;
+                    isDrawing = false;
+                    tool = null;
+                    draw();
                 }
             });
 
@@ -246,6 +298,9 @@
                 if (e.code === 'Space') {
                     spaceDown = false;
                     if (!isPanning) canvas.style.cursor = 'crosshair';
+                }
+                if (e.code === 'Escape') {
+                    escDown = false;
                 }
             });
 
@@ -277,6 +332,12 @@
 
                 // Only left-click draws/creates text
                 if (e.button !== 0) return;
+
+                if (escDown) {
+                    const pWorld = screenToWorld(pScreen);
+                    if (deleteShapeAt(pWorld)) draw();
+                    return;
+                }
 
                 start = screenToWorld(pScreen);
 
@@ -361,11 +422,6 @@
             document.addEventListener('keydown', (e) => {
                 if (e.key === 'Delete') {
                     shapes = [];
-                    draw();
-                }
-                if (e.key === 'Escape') {
-                    isDrawing = false;
-                    tool = null;
                     draw();
                 }
             });
