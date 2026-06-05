@@ -7,6 +7,10 @@ A quick diagram drafter with keyboard shortcuts.
 - Simple drawing board for quick diagrams
 - Keyboard shortcuts for efficient diagramming
 
+## Live Demo
+
+Visit the live site at **https://lordmsz.github.io/whizk/**
+
 ## Getting Started
 
-Open `drawingboard.html` in your browser to start drawing.
+Open `index.html` in your browser to start drawing locally.
