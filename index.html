@@ -114,6 +114,8 @@
                 gridSize: 30,
                 gridColor: 'rgba(255,255,255,0.06)'
             };
+            const fontFamily = "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif";
+            const EXPORT_PADDING = Math.max(CONFIG.arrowHead, CONFIG.fontSize, CONFIG.lineWidth * 2);
 
             let shapes = [];
             let isDrawing = false;
@@ -139,6 +141,10 @@
                 return { x: p.x + pan.x, y: p.y + pan.y };
             }
 
+            function getFont() {
+                return `${CONFIG.fontSize}px ${fontFamily}`;
+            }
+
             function resize() {
                 canvas.width = window.innerWidth;
                 canvas.height = window.innerHeight;
@@ -150,53 +156,96 @@
                 return { x: e.clientX - r.left, y: e.clientY - r.top };
             }
 
-            function drawGrid() {
-                ctx.strokeStyle = CONFIG.gridColor;
-                ctx.lineWidth = 1;
+            function applyTextStyles(renderCtx) {
+                renderCtx.font = getFont();
+                renderCtx.fillStyle = CONFIG.text;
+            }
 
-                const startX = mod(pan.x, CONFIG.gridSize);
-                const startY = mod(pan.y, CONFIG.gridSize);
+            function drawGrid(renderCtx, width, height, renderPan) {
+                renderCtx.strokeStyle = CONFIG.gridColor;
+                renderCtx.lineWidth = 1;
 
-                for (let x = startX; x <= canvas.width; x += CONFIG.gridSize) {
-                    ctx.beginPath();
-                    ctx.moveTo(x, 0);
-                    ctx.lineTo(x, canvas.height);
-                    ctx.stroke();
+                const startX = mod(renderPan.x, CONFIG.gridSize);
+                const startY = mod(renderPan.y, CONFIG.gridSize);
+
+                for (let x = startX; x <= width; x += CONFIG.gridSize) {
+                    renderCtx.beginPath();
+                    renderCtx.moveTo(x, 0);
+                    renderCtx.lineTo(x, height);
+                    renderCtx.stroke();
                 }
-                for (let y = startY; y <= canvas.height; y += CONFIG.gridSize) {
-                    ctx.beginPath();
-                    ctx.moveTo(0, y);
-                    ctx.lineTo(canvas.width, y);
-                    ctx.stroke();
+                for (let y = startY; y <= height; y += CONFIG.gridSize) {
+                    renderCtx.beginPath();
+                    renderCtx.moveTo(0, y);
+                    renderCtx.lineTo(width, y);
+                    renderCtx.stroke();
                 }
             }
 
-            function drawRect(x1, y1, x2, y2) {
+            function drawRect(renderCtx, x1, y1, x2, y2) {
                 const x = Math.min(x1, x2);
                 const y = Math.min(y1, y2);
                 const w = Math.abs(x2 - x1);
                 const h = Math.abs(y2 - y1);
-                ctx.strokeRect(x, y, w, h);
+                renderCtx.strokeRect(x, y, w, h);
             }
 
-            function drawArrow(x1, y1, x2, y2) {
+            function drawArrow(renderCtx, x1, y1, x2, y2) {
                 const angle = Math.atan2(y2 - y1, x2 - x1);
-                ctx.beginPath();
-                ctx.moveTo(x1, y1);
-                ctx.lineTo(x2, y2);
-                ctx.stroke();
+                renderCtx.beginPath();
+                renderCtx.moveTo(x1, y1);
+                renderCtx.lineTo(x2, y2);
+                renderCtx.stroke();
 
                 const hl = CONFIG.arrowHead;
-                ctx.beginPath();
-                ctx.moveTo(x2, y2);
-                ctx.lineTo(x2 - hl * Math.cos(angle - Math.PI / 6), y2 - hl * Math.sin(angle - Math.PI / 6));
-                ctx.lineTo(x2 - hl * Math.cos(angle + Math.PI / 6), y2 - hl * Math.sin(angle + Math.PI / 6));
-                ctx.closePath();
-                ctx.fill();
+                renderCtx.beginPath();
+                renderCtx.moveTo(x2, y2);
+                renderCtx.lineTo(x2 - hl * Math.cos(angle - Math.PI / 6), y2 - hl * Math.sin(angle - Math.PI / 6));
+                renderCtx.lineTo(x2 - hl * Math.cos(angle + Math.PI / 6), y2 - hl * Math.sin(angle + Math.PI / 6));
+                renderCtx.closePath();
+                renderCtx.fill();
             }
 
-            function drawText(x, y, text) {
-                ctx.fillText(text, x, y);
+            function drawText(renderCtx, x, y, text) {
+                renderCtx.fillText(text, x, y);
+            }
+
+            function measureTextWidth(text, renderCtx = ctx) {
+                applyTextStyles(renderCtx);
+                return renderCtx.measureText(text).width;
+            }
+
+            function getShapeBounds(shape) {
+                if (shape.type === 'text') {
+                    const width = measureTextWidth(shape.text);
+                    return {
+                        minX: shape.x,
+                        maxX: shape.x + width,
+                        minY: shape.y - CONFIG.fontSize,
+                        maxY: shape.y
+                    };
+                }
+
+                return {
+                    minX: Math.min(shape.x1, shape.x2),
+                    maxX: Math.max(shape.x1, shape.x2),
+                    minY: Math.min(shape.y1, shape.y2),
+                    maxY: Math.max(shape.y1, shape.y2)
+                };
+            }
+
+            function getDrawingBounds() {
+                if (shapes.length === 0) return null;
+
+                return shapes.reduce((bounds, shape) => {
+                    const shapeBounds = getShapeBounds(shape);
+                    return {
+                        minX: Math.min(bounds.minX, shapeBounds.minX),
+                        minY: Math.min(bounds.minY, shapeBounds.minY),
+                        maxX: Math.max(bounds.maxX, shapeBounds.maxX),
+                        maxY: Math.max(bounds.maxY, shapeBounds.maxY)
+                    };
+                }, getShapeBounds(shapes[0]));
             }
 
             function pointToSegmentDistance(px, py, x1, y1, x2, y2) {
@@ -224,8 +273,7 @@
                 }
 
                 if (s.type === 'text') {
-                    ctx.font = `${CONFIG.fontSize}px -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif`;
-                    const width = ctx.measureText(s.text).width;
+                    const width = measureTextWidth(s.text);
                     return p.x >= s.x - tolerance &&
                         p.x <= s.x + width + tolerance &&
                         p.y >= s.y - CONFIG.fontSize - tolerance &&
@@ -245,37 +293,35 @@
                 return false;
             }
 
-            function draw() {
-                ctx.fillStyle = CONFIG.bg;
-                ctx.fillRect(0, 0, canvas.width, canvas.height);
+            function draw(renderCtx = ctx, width = canvas.width, height = canvas.height, renderPan = pan) {
+                renderCtx.fillStyle = CONFIG.bg;
+                renderCtx.fillRect(0, 0, width, height);
 
-                drawGrid();
+                drawGrid(renderCtx, width, height, renderPan);
 
-                ctx.strokeStyle = CONFIG.stroke;
-                ctx.fillStyle = CONFIG.stroke;
-                ctx.lineWidth = CONFIG.lineWidth;
-
-                ctx.font = `${CONFIG.fontSize}px -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif`;
-                ctx.fillStyle = CONFIG.text;
+                renderCtx.strokeStyle = CONFIG.stroke;
+                renderCtx.fillStyle = CONFIG.stroke;
+                renderCtx.lineWidth = CONFIG.lineWidth;
+                applyTextStyles(renderCtx);
 
                 for (const s of shapes) {
                     if (s.type === 'rect') {
-                        const a = worldToScreen({ x: s.x1, y: s.y1 });
-                        const b = worldToScreen({ x: s.x2, y: s.y2 });
-                        ctx.strokeStyle = CONFIG.stroke;
-                        ctx.lineWidth = CONFIG.lineWidth;
-                        drawRect(a.x, a.y, b.x, b.y);
+                        const a = { x: s.x1 + renderPan.x, y: s.y1 + renderPan.y };
+                        const b = { x: s.x2 + renderPan.x, y: s.y2 + renderPan.y };
+                        renderCtx.strokeStyle = CONFIG.stroke;
+                        renderCtx.lineWidth = CONFIG.lineWidth;
+                        drawRect(renderCtx, a.x, a.y, b.x, b.y);
                     } else if (s.type === 'arrow') {
-                        const a = worldToScreen({ x: s.x1, y: s.y1 });
-                        const b = worldToScreen({ x: s.x2, y: s.y2 });
-                        ctx.strokeStyle = CONFIG.stroke;
-                        ctx.fillStyle = CONFIG.stroke;
-                        ctx.lineWidth = CONFIG.lineWidth;
-                        drawArrow(a.x, a.y, b.x, b.y);
+                        const a = { x: s.x1 + renderPan.x, y: s.y1 + renderPan.y };
+                        const b = { x: s.x2 + renderPan.x, y: s.y2 + renderPan.y };
+                        renderCtx.strokeStyle = CONFIG.stroke;
+                        renderCtx.fillStyle = CONFIG.stroke;
+                        renderCtx.lineWidth = CONFIG.lineWidth;
+                        drawArrow(renderCtx, a.x, a.y, b.x, b.y);
                     } else if (s.type === 'text') {
-                        const p = worldToScreen({ x: s.x, y: s.y });
-                        ctx.fillStyle = CONFIG.text;
-                        drawText(p.x, p.y, s.text);
+                        const p = { x: s.x + renderPan.x, y: s.y + renderPan.y };
+                        renderCtx.fillStyle = CONFIG.text;
+                        drawText(renderCtx, p.x, p.y, s.text);
                     }
                 }
             }
@@ -385,8 +431,8 @@
                 ctx.fillStyle = CONFIG.stroke;
                 ctx.lineWidth = CONFIG.lineWidth;
 
-                if (tool === 'rect') drawRect(a.x, a.y, b.x, b.y);
-                if (tool === 'arrow') drawArrow(a.x, a.y, b.x, b.y);
+                if (tool === 'rect') drawRect(ctx, a.x, a.y, b.x, b.y);
+                if (tool === 'arrow') drawArrow(ctx, a.x, a.y, b.x, b.y);
             });
 
             canvas.addEventListener('mouseup', (e) => {
@@ -413,8 +459,25 @@
             });
 
             downloadBtn.addEventListener('click', () => {
+                const bounds = getDrawingBounds();
+                const exportCanvas = document.createElement('canvas');
+                const exportCtx = exportCanvas.getContext('2d');
+
+                if (bounds) {
+                    exportCanvas.width = Math.ceil(bounds.maxX - bounds.minX + EXPORT_PADDING * 2);
+                    exportCanvas.height = Math.ceil(bounds.maxY - bounds.minY + EXPORT_PADDING * 2);
+                    draw(exportCtx, exportCanvas.width, exportCanvas.height, {
+                        x: EXPORT_PADDING - bounds.minX,
+                        y: EXPORT_PADDING - bounds.minY
+                    });
+                } else {
+                    exportCanvas.width = canvas.width;
+                    exportCanvas.height = canvas.height;
+                    draw(exportCtx, exportCanvas.width, exportCanvas.height, pan);
+                }
+
                 const link = document.createElement('a');
-                link.href = canvas.toDataURL('image/png');
+                link.href = exportCanvas.toDataURL('image/png');
                 link.download = `drawingboard-${Date.now()}.png`;
                 link.click();
             });
