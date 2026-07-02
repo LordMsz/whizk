@@ -114,7 +114,8 @@
                 gridSize: 30,
                 gridColor: 'rgba(255,255,255,0.06)'
             };
-            const FONT_FAMILY = "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif";
+            const fontFamily = "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif";
+            const EXPORT_PADDING = Math.max(CONFIG.arrowHead, CONFIG.fontSize, CONFIG.lineWidth * 2);
 
             let shapes = [];
             let isDrawing = false;
@@ -141,7 +142,7 @@
             }
 
             function getFont() {
-                return `${CONFIG.fontSize}px ${FONT_FAMILY}`;
+                return `${CONFIG.fontSize}px ${fontFamily}`;
             }
 
             function resize() {
@@ -463,12 +464,11 @@
                 const exportCtx = exportCanvas.getContext('2d');
 
                 if (bounds) {
-                    const padding = Math.max(CONFIG.gridSize, CONFIG.arrowHead, CONFIG.fontSize);
-                    exportCanvas.width = Math.ceil(bounds.maxX - bounds.minX + padding * 2);
-                    exportCanvas.height = Math.ceil(bounds.maxY - bounds.minY + padding * 2);
+                    exportCanvas.width = Math.ceil(bounds.maxX - bounds.minX + EXPORT_PADDING * 2);
+                    exportCanvas.height = Math.ceil(bounds.maxY - bounds.minY + EXPORT_PADDING * 2);
                     draw(exportCtx, exportCanvas.width, exportCanvas.height, {
-                        x: padding - bounds.minX,
-                        y: padding - bounds.minY
+                        x: EXPORT_PADDING - bounds.minX,
+                        y: EXPORT_PADDING - bounds.minY
                     });
                 } else {
                     exportCanvas.width = canvas.width;
