@@ -78,6 +78,143 @@
             background-color: #444;
         }
 
+        /* ── Saved Drawings dialog ─────────────────────────────────── */
+        .dialog-overlay {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.7);
+            z-index: 200;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .dialog-overlay.open {
+            display: flex;
+        }
+
+        .dialog-box {
+            background: #1a1a1a;
+            border: 1px solid #333;
+            border-radius: 8px;
+            padding: 20px;
+            width: 90%;
+            max-width: 460px;
+            max-height: 80vh;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .dialog-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .dialog-title {
+            font-size: 12px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: #888;
+        }
+
+        .dialog-close-btn {
+            background: none;
+            border: none;
+            color: #888;
+            cursor: pointer;
+            font-size: 20px;
+            line-height: 1;
+            padding: 0 2px;
+        }
+
+        .dialog-close-btn:hover { color: #e0e0e0; }
+
+        .dialog-save-row {
+            display: flex;
+            gap: 8px;
+        }
+
+        .dialog-name-input {
+            flex: 1;
+            background: #2a2a2a;
+            border: 1px solid #444;
+            border-radius: 4px;
+            color: #e0e0e0;
+            font-size: 12px;
+            padding: 6px 10px;
+            font-family: inherit;
+            outline: none;
+        }
+
+        .dialog-name-input:focus { border-color: #4a9eff; }
+        .dialog-name-input::placeholder { color: #555; }
+
+        .drawings-list {
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            max-height: 50vh;
+        }
+
+        .drawings-empty {
+            font-size: 12px;
+            color: #555;
+            text-align: center;
+            padding: 24px 0;
+        }
+
+        .drawing-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 10px;
+            background: #2a2a2a;
+            border: 1px solid #333;
+            border-radius: 4px;
+        }
+
+        .drawing-item-info {
+            flex: 1;
+            min-width: 0;
+            cursor: pointer;
+        }
+
+        .drawing-item-info:hover .drawing-item-name { color: #4a9eff; }
+
+        .drawing-item-name {
+            font-size: 12px;
+            color: #e0e0e0;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            transition: color 0.15s;
+        }
+
+        .drawing-item-time {
+            font-size: 10px;
+            color: #555;
+            margin-top: 2px;
+        }
+
+        .drawing-item-del {
+            background: none;
+            border: 1px solid #3a3a3a;
+            border-radius: 3px;
+            color: #555;
+            cursor: pointer;
+            font-size: 13px;
+            line-height: 1;
+            padding: 2px 7px;
+            transition: all 0.15s;
+            flex-shrink: 0;
+        }
+
+        .drawing-item-del:hover { border-color: #ff4a4a; color: #ff4a4a; }
+
     </style>
 </head>
 <body>
@@ -95,6 +232,7 @@
         </div>
         <button class="toolbar-button" id="clearBtn">Clear Canvas</button>
         <button class="toolbar-button" id="downloadBtn">Download as PNG</button>
+        <button class="toolbar-button" id="savedDrawingsBtn">Saved Drawings</button>
     </div>
 
     <script>
@@ -128,6 +266,78 @@
             let escDown = false;
             let isPanning = false;
             let panLast = { x: 0, y: 0 };
+
+            // ── Storage ────────────────────────────────────────────────────
+            const STORAGE_CURRENT = 'whizk_current';
+            const STORAGE_DRAWINGS = 'whizk_drawings';
+
+            let panSaveTimer = null;
+
+            function autosave() {
+                try {
+                    localStorage.setItem(STORAGE_CURRENT, JSON.stringify({ shapes, pan }));
+                } catch (_) {}
+            }
+
+            function debouncedAutosave() {
+                clearTimeout(panSaveTimer);
+                panSaveTimer = setTimeout(autosave, 400);
+            }
+
+            function loadCurrentState() {
+                try {
+                    const raw = localStorage.getItem(STORAGE_CURRENT);
+                    if (!raw) return;
+                    const data = JSON.parse(raw);
+                    if (Array.isArray(data.shapes)) shapes = data.shapes;
+                    if (data.pan && typeof data.pan.x === 'number') pan = data.pan;
+                } catch (_) {}
+            }
+
+            function getSavedList() {
+                try { return JSON.parse(localStorage.getItem(STORAGE_DRAWINGS) || '[]'); }
+                catch (_) { return []; }
+            }
+
+            function persistList(list) {
+                try { localStorage.setItem(STORAGE_DRAWINGS, JSON.stringify(list)); }
+                catch (_) {}
+            }
+
+            function saveSnapshot(name) {
+                const list = getSavedList();
+                const ts = Date.now();
+                list.unshift({
+                    id: String(ts),
+                    name: name.trim() || formatTs(ts),
+                    timestamp: ts,
+                    shapes: JSON.parse(JSON.stringify(shapes)),
+                    pan: { ...pan }
+                });
+                persistList(list);
+            }
+
+            function deleteSnapshot(id) {
+                persistList(getSavedList().filter(d => d.id !== id));
+            }
+
+            function renameSnapshot(id, newName) {
+                persistList(getSavedList().map(d => d.id === id ? { ...d, name: newName } : d));
+            }
+
+            function loadSnapshot(id) {
+                const item = getSavedList().find(d => d.id === id);
+                if (!item) return;
+                shapes = JSON.parse(JSON.stringify(item.shapes));
+                pan = { ...item.pan };
+                autosave();
+                draw();
+            }
+
+            function formatTs(ts) {
+                return new Date(ts).toLocaleString();
+            }
+            // ──────────────────────────────────────────────────────────────
 
             function mod(n, m) {
                 return ((n % m) + m) % m;
@@ -356,12 +566,14 @@
                 pan.x -= e.deltaX;
                 pan.y -= e.deltaY;
                 draw();
+                debouncedAutosave();
             }, { passive: false });
 
             window.addEventListener('mouseup', () => {
                 if (isPanning) {
                     isPanning = false;
                     canvas.style.cursor = spaceDown ? 'grab' : 'crosshair';
+                    autosave();
                 }
             });
 
@@ -381,7 +593,7 @@
 
                 if (escDown) {
                     const pWorld = screenToWorld(pScreen);
-                    if (deleteShapeAt(pWorld)) draw();
+                    if (deleteShapeAt(pWorld)) { draw(); autosave(); }
                     return;
                 }
 
@@ -403,6 +615,7 @@
                 if (text && text.trim()) {
                     shapes.push({ type: 'text', x: start.x, y: start.y, text: text.trim() });
                     draw();
+                    autosave();
                 }
             });
 
@@ -451,11 +664,13 @@
                 isDrawing = false;
                 tool = null;
                 draw();
+                autosave();
             });
 
             clearBtn.addEventListener('click', () => {
                 shapes = [];
                 draw();
+                autosave();
             });
 
             downloadBtn.addEventListener('click', () => {
@@ -486,9 +701,135 @@
                 if (e.key === 'Delete') {
                     shapes = [];
                     draw();
+                    autosave();
                 }
             });
 
+            // ── Dialog ────────────────────────────────────────────────────
+            const savedDrawingsBtn = document.getElementById('savedDrawingsBtn');
+
+            const dialogOverlay = document.createElement('div');
+            dialogOverlay.className = 'dialog-overlay';
+            dialogOverlay.innerHTML = `
+                <div class="dialog-box">
+                    <div class="dialog-header">
+                        <span class="dialog-title">Saved Drawings</span>
+                        <button class="dialog-close-btn" id="dialogCloseBtn">&#xD7;</button>
+                    </div>
+                    <div class="dialog-save-row">
+                        <input class="dialog-name-input" id="drawingNameInput" type="text"
+                               placeholder="Name (optional)..." maxlength="80">
+                        <button class="toolbar-button" id="saveDrawingBtn"
+                                style="margin:0;width:auto;white-space:nowrap">Save current</button>
+                    </div>
+                    <div class="drawings-list" id="drawingsList"></div>
+                </div>
+            `;
+            document.body.appendChild(dialogOverlay);
+
+            const dialogCloseBtn = document.getElementById('dialogCloseBtn');
+            const saveDrawingBtn = document.getElementById('saveDrawingBtn');
+            const drawingNameInput = document.getElementById('drawingNameInput');
+            const drawingsList = document.getElementById('drawingsList');
+
+            function renderDrawingsList() {
+                const list = getSavedList();
+                if (list.length === 0) {
+                    drawingsList.innerHTML = '<div class="drawings-empty">No saved drawings yet</div>';
+                    return;
+                }
+                drawingsList.innerHTML = '';
+                for (const item of list) {
+                    const el = document.createElement('div');
+                    el.className = 'drawing-item';
+
+                    const info = document.createElement('div');
+                    info.className = 'drawing-item-info';
+                    info.title = 'Click to load';
+
+                    const nameEl = document.createElement('div');
+                    nameEl.className = 'drawing-item-name';
+                    nameEl.textContent = item.name;
+
+                    const timeEl = document.createElement('div');
+                    timeEl.className = 'drawing-item-time';
+                    timeEl.textContent = formatTs(item.timestamp);
+
+                    info.appendChild(nameEl);
+                    info.appendChild(timeEl);
+
+                    const delBtn = document.createElement('button');
+                    delBtn.className = 'drawing-item-del';
+                    delBtn.innerHTML = '&#xD7;';
+                    delBtn.title = 'Delete';
+
+                    el.appendChild(info);
+                    el.appendChild(delBtn);
+
+                    info.addEventListener('click', () => {
+                        loadSnapshot(item.id);
+                        closeDialog();
+                    });
+
+                    nameEl.addEventListener('dblclick', (e) => {
+                        e.stopPropagation();
+                        const newName = window.prompt('Rename drawing:', item.name);
+                        if (newName !== null && newName.trim()) {
+                            renameSnapshot(item.id, newName.trim());
+                            renderDrawingsList();
+                        }
+                    });
+
+                    delBtn.addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        deleteSnapshot(item.id);
+                        renderDrawingsList();
+                    });
+
+                    drawingsList.appendChild(el);
+                }
+            }
+
+            function openDialog() {
+                renderDrawingsList();
+                dialogOverlay.classList.add('open');
+            }
+
+            function closeDialog() {
+                dialogOverlay.classList.remove('open');
+            }
+
+            savedDrawingsBtn.addEventListener('click', openDialog);
+
+            dialogCloseBtn.addEventListener('click', closeDialog);
+
+            dialogOverlay.addEventListener('click', (e) => {
+                if (e.target === dialogOverlay) closeDialog();
+            });
+
+            document.addEventListener('keydown', (e) => {
+                if (e.key === 'Escape' && dialogOverlay.classList.contains('open')) {
+                    closeDialog();
+                    escDown = false;
+                }
+            });
+
+            saveDrawingBtn.addEventListener('click', () => {
+                saveSnapshot(drawingNameInput.value);
+                drawingNameInput.value = '';
+                renderDrawingsList();
+            });
+
+            drawingNameInput.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') {
+                    saveSnapshot(drawingNameInput.value);
+                    drawingNameInput.value = '';
+                    renderDrawingsList();
+                }
+            });
+            // ──────────────────────────────────────────────────────────────
+
+            loadCurrentState();
             window.addEventListener('resize', resize);
             resize();
         })();
