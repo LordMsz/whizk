@@ -215,6 +215,20 @@
 
         .drawing-item-del:hover { border-color: #ff4a4a; color: #ff4a4a; }
 
+        .drawing-item-rename {
+            background: none;
+            border: 1px solid #3a3a3a;
+            border-radius: 3px;
+            color: #555;
+            cursor: pointer;
+            font-size: 11px;
+            padding: 2px 7px;
+            transition: all 0.15s;
+            flex-shrink: 0;
+        }
+
+        .drawing-item-rename:hover { border-color: #4a9eff; color: #4a9eff; }
+
     </style>
 </head>
 <body>
@@ -763,7 +777,13 @@
                     delBtn.innerHTML = '&#xD7;';
                     delBtn.title = 'Delete';
 
+                    const renameBtn = document.createElement('button');
+                    renameBtn.className = 'drawing-item-rename';
+                    renameBtn.textContent = '✎';
+                    renameBtn.title = 'Rename';
+
                     el.appendChild(info);
+                    el.appendChild(renameBtn);
                     el.appendChild(delBtn);
 
                     info.addEventListener('click', () => {
@@ -771,7 +791,7 @@
                         closeDialog();
                     });
 
-                    nameEl.addEventListener('dblclick', (e) => {
+                    renameBtn.addEventListener('click', (e) => {
                         e.stopPropagation();
                         const newName = window.prompt('Rename drawing:', item.name);
                         if (newName !== null && newName.trim()) {
@@ -788,6 +808,12 @@
 
                     drawingsList.appendChild(el);
                 }
+            }
+
+            function handleSaveDrawing() {
+                saveSnapshot(drawingNameInput.value);
+                drawingNameInput.value = '';
+                renderDrawingsList();
             }
 
             function openDialog() {
@@ -809,23 +835,20 @@
 
             document.addEventListener('keydown', (e) => {
                 if (e.key === 'Escape' && dialogOverlay.classList.contains('open')) {
-                    closeDialog();
-                    escDown = false;
+                    if (document.activeElement === drawingNameInput) {
+                        drawingNameInput.value = '';
+                        drawingNameInput.blur();
+                    } else {
+                        closeDialog();
+                        escDown = false;
+                    }
                 }
             });
 
-            saveDrawingBtn.addEventListener('click', () => {
-                saveSnapshot(drawingNameInput.value);
-                drawingNameInput.value = '';
-                renderDrawingsList();
-            });
+            saveDrawingBtn.addEventListener('click', handleSaveDrawing);
 
             drawingNameInput.addEventListener('keydown', (e) => {
-                if (e.key === 'Enter') {
-                    saveSnapshot(drawingNameInput.value);
-                    drawingNameInput.value = '';
-                    renderDrawingsList();
-                }
+                if (e.key === 'Enter') handleSaveDrawing();
             });
             // ──────────────────────────────────────────────────────────────
 
