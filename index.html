@@ -55,6 +55,16 @@
             margin: 4px 0;
         }
 
+        .toolbar-color {
+            display: inline-block;
+            width: 10px;
+            height: 10px;
+            margin-left: 4px;
+            border: 1px solid #888;
+            border-radius: 50%;
+            vertical-align: -1px;
+        }
+
         .toolbar-button {
             display: block;
             width: 100%;
@@ -242,6 +252,8 @@
             <div><strong>Space</strong> + drag (or Middle Mouse): Pan</div>
             <div>Click: Add text</div>
             <div><strong>Esc</strong> + click: Delete object</div>
+            <div>Wheel: Change color <span id="colorName">Blue</span><span id="colorSwatch" class="toolbar-color"></span></div>
+            <div><strong>Shift</strong> + wheel: Pan</div>
             <div><strong>Delete</strong>: Clear all</div>
         </div>
         <button class="toolbar-button" id="clearBtn">Clear Canvas</button>
@@ -266,10 +278,19 @@
                 gridSize: 30,
                 gridColor: 'rgba(255,255,255,0.06)'
             };
+            const COLORS = [
+                { name: 'Blue', value: CONFIG.stroke },
+                { name: 'Red', value: '#ff4a4a' },
+                { name: 'Green', value: '#4aff8a' },
+                { name: 'Yellow', value: '#ffd54a' },
+                { name: 'Purple', value: '#b56bff' }
+            ];
             const fontFamily = "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif";
             const EXPORT_PADDING = Math.max(CONFIG.arrowHead, CONFIG.fontSize, CONFIG.lineWidth * 2);
 
             let shapes = [];
+            let activeColorIndex = 0;
+            let drawingColor = COLORS[activeColorIndex].value;
             let isDrawing = false;
             let tool = null; // 'rect' | 'arrow'
             let start = { x: 0, y: 0 }; // world-space
@@ -355,6 +376,12 @@
 
             function mod(n, m) {
                 return ((n % m) + m) % m;
+            }
+
+            function updateColorIndicator() {
+                const color = COLORS[activeColorIndex];
+                document.getElementById('colorName').textContent = color.name;
+                document.getElementById('colorSwatch').style.backgroundColor = color.value;
             }
 
             function screenToWorld(p) {
@@ -529,22 +556,23 @@
                 applyTextStyles(renderCtx);
 
                 for (const s of shapes) {
+                    const color = s.color || CONFIG.stroke;
                     if (s.type === 'rect') {
                         const a = { x: s.x1 + renderPan.x, y: s.y1 + renderPan.y };
                         const b = { x: s.x2 + renderPan.x, y: s.y2 + renderPan.y };
-                        renderCtx.strokeStyle = CONFIG.stroke;
+                        renderCtx.strokeStyle = color;
                         renderCtx.lineWidth = CONFIG.lineWidth;
                         drawRect(renderCtx, a.x, a.y, b.x, b.y);
                     } else if (s.type === 'arrow') {
                         const a = { x: s.x1 + renderPan.x, y: s.y1 + renderPan.y };
                         const b = { x: s.x2 + renderPan.x, y: s.y2 + renderPan.y };
-                        renderCtx.strokeStyle = CONFIG.stroke;
-                        renderCtx.fillStyle = CONFIG.stroke;
+                        renderCtx.strokeStyle = color;
+                        renderCtx.fillStyle = color;
                         renderCtx.lineWidth = CONFIG.lineWidth;
                         drawArrow(renderCtx, a.x, a.y, b.x, b.y);
                     } else if (s.type === 'text') {
                         const p = { x: s.x + renderPan.x, y: s.y + renderPan.y };
-                        renderCtx.fillStyle = CONFIG.text;
+                        renderCtx.fillStyle = color;
                         drawText(renderCtx, p.x, p.y, s.text);
                     }
                 }
@@ -575,12 +603,19 @@
             });
 
             canvas.addEventListener('wheel', (e) => {
-                // Trackpad / wheel panning (keeps the page from scrolling)
                 e.preventDefault();
-                pan.x -= e.deltaX;
-                pan.y -= e.deltaY;
-                draw();
-                debouncedAutosave();
+                if (e.shiftKey) {
+                    pan.x -= e.deltaX;
+                    pan.y -= e.deltaY;
+                    draw();
+                    debouncedAutosave();
+                } else {
+                    const delta = e.deltaY || e.deltaX;
+                    if (delta) {
+                        activeColorIndex = mod(activeColorIndex + (delta > 0 ? 1 : -1), COLORS.length);
+                        updateColorIndicator();
+                    }
+                }
             }, { passive: false });
 
             window.addEventListener('mouseup', () => {
@@ -615,19 +650,21 @@
 
                 if (e.shiftKey) {
                     tool = 'rect';
+                    drawingColor = COLORS[activeColorIndex].value;
                     isDrawing = true;
                     return;
                 }
 
                 if (e.ctrlKey || e.metaKey) {
                     tool = 'arrow';
+                    drawingColor = COLORS[activeColorIndex].value;
                     isDrawing = true;
                     return;
                 }
 
                 const text = window.prompt('Text:', '');
                 if (text && text.trim()) {
-                    shapes.push({ type: 'text', x: start.x, y: start.y, text: text.trim() });
+                    shapes.push({ type: 'text', x: start.x, y: start.y, text: text.trim(), color: COLORS[activeColorIndex].value });
                     draw();
                     autosave();
                 }
@@ -654,8 +691,8 @@
                 const a = worldToScreen(start);
                 const b = worldToScreen(pWorld);
 
-                ctx.strokeStyle = CONFIG.stroke;
-                ctx.fillStyle = CONFIG.stroke;
+                ctx.strokeStyle = drawingColor;
+                ctx.fillStyle = drawingColor;
                 ctx.lineWidth = CONFIG.lineWidth;
 
                 if (tool === 'rect') drawRect(ctx, a.x, a.y, b.x, b.y);
@@ -674,7 +711,7 @@
                 if (!isDrawing) return;
 
                 const pWorld = screenToWorld(pScreen);
-                shapes.push({ type: tool, x1: start.x, y1: start.y, x2: pWorld.x, y2: pWorld.y });
+                shapes.push({ type: tool, x1: start.x, y1: start.y, x2: pWorld.x, y2: pWorld.y, color: drawingColor });
                 isDrawing = false;
                 tool = null;
                 draw();
@@ -853,6 +890,7 @@
             // ──────────────────────────────────────────────────────────────
 
             loadCurrentState();
+            updateColorIndicator();
             window.addEventListener('resize', resize);
             resize();
         })();
